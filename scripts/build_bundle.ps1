@@ -17,14 +17,27 @@ if (-not (Test-Path -LiteralPath $distDir)) {
     New-Item -ItemType Directory -Path $distDir | Out-Null
 }
 
-Copy-Item -LiteralPath $SourceSingle -Destination $DistFile -Force
+function Write-Utf8NoBomLua {
+    param(
+        [Parameter(Mandatory=$true)][string]$SourcePath,
+        [Parameter(Mandatory=$true)][string]$DestinationPath
+    )
+
+    $text = [System.IO.File]::ReadAllText($SourcePath)
+    if ($text.Length -gt 0 -and [int][char]$text[0] -eq 0xFEFF) {
+        $text = $text.Substring(1)
+    }
+    [System.IO.File]::WriteAllText($DestinationPath, $text, [System.Text.UTF8Encoding]::new($false))
+}
+
+Write-Utf8NoBomLua -SourcePath $SourceSingle -DestinationPath $DistFile
 
 $mainPath = Join-Path $ProjectRoot "main.lua"
-Copy-Item -LiteralPath $mainPath -Destination $RemoteBootstrap -Force
+Write-Utf8NoBomLua -SourcePath $mainPath -DestinationPath $RemoteBootstrap
 
 $modularMainPath = Join-Path $ProjectRoot "main.modular.lua"
 if (Test-Path -LiteralPath $modularMainPath) {
-    Copy-Item -LiteralPath $modularMainPath -Destination $ModularBootstrap -Force
+    Write-Utf8NoBomLua -SourcePath $modularMainPath -DestinationPath $ModularBootstrap
 }
 
 $sourceInfo = Get-Item -LiteralPath $SourceSingle
