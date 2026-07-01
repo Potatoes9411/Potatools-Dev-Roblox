@@ -1,0 +1,13 @@
+﻿local M = {}\n\nfunction M.build(env)\n    local createWindow = env.createWindow\n    local Theme = env.Theme\n    return function()\n    local w = createWindow("Help & About", "Usage guide", 460, 540, randPos(460, 540))
+    w:AddSection("Getting Started")
+    w:AddLabel("1. Pick a game from the main hub list.")
+    w:AddLabel("2. Click it to open its feature window.")
+    w:AddLabel("3. Toggle features on; each is draggable.")
+    w:AddSection("Keybinds")
+    w:AddLabel("RightCtrl  -  show / hide the hub")
+    w:AddLabel("RightShift  -  panic (disable all)")
+    w:AddLabel("Delete      -  panic (disable all)")
+    w:AddLabel("Z (hold)    -  Zoom (if enabled)")
+    w:AddSection("Tips")
+    w:AddLabel("- 'Universal' works in every game.")
+    w:AddLabel("- 'Vape Modules' = combat/movement/rend\n    end\nend\n\nreturn M\n

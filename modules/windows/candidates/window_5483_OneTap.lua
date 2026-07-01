@@ -1,0 +1,37 @@
+﻿local M = {}\n\nfunction M.build(env)\n    local createWindow = env.createWindow\n    local Theme = env.Theme\n    return function()\n    local w = buildFPSWindow("One Tap", Color3.fromRGB(180, 80, 255))
+    w:AddSection("One Tap Extras")
+    w:AddToggle("Instant Aim (no smoothing)", false, function(v) Aimbot.Config.Smoothness = v and 1 or Aimbot.Config.Smoothness end)
+    w:AddToggle("Always Headshot", true, function(v) Aimbot.Config.TargetPart = v and "Head" or "HumanoidRootPart" end)
+    w:AddToggle("Silent Aim", false, function(v) SilentAim:Set(v) end)
+    w:AddToggle("Infinite Ammo (best-effort)", false, function(v) InfiniteAmmo:Set(v) end)
+    w:AddToggle("No Recoil", false, function(v) NoSpread:Set(v) end)
+    w:AddToggle("Auto Reload", false, function(v) AutoReload:Set(v) end)
+    w:AddToggle("Bunny Hop", false, function(v) BunnyHop:Set(v) end)
+    w:AddToggle("Auto Dodge Players", false, function(v) AutoDodgePlayer:Set(v) end)
+    w:AddButton("Respawn", function() pcall(function() LocalPlayer.Character:BreakJoints() end) end)
+    w:AddSection("Visuals")
+    w:AddToggle("Damage Numbers", false, function(v) DamageNumbers:Set(v) end)
+    w:AddToggle("Hit Indicator", false, function(v) HitIndicator:Set(v) end)
+    w:AddToggle("Box ESP", false, function(v) BoxESP:Set(v) end)
+    w:AddToggle("Crosshair", false, function(v) setCrosshair(v) end)
+    w:AddToggle("Radar", false, function(v) Radar:Set(v) end)
+    w:AddToggle("Fullbright", false, function(v) Fullbright:Set(v) end)
+    w:AddSection("Movement")
+    w:AddToggle("Walk Speed", false, function(v) Movement.WalkSpeed.Enabled = v end)
+    w:AddSlider("Speed", 16, 100, 25, "", 0, function(v) Movement.WalkSpeed.Value = v end)
+    w:AddToggle("Fly", false, function(v) Movement.Fly.Enabled = v end)
+    w:AddToggle("Noclip", false, function(v) Movement.Noclip = v end)
+    w:AddSection("Server")
+    w:AddButton("Rejoin Server", function()
+        pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+    end)
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    return w
+end
+
+--===== BEE SWARM SIMULATOR =====
+local function BeeSwarmSimulator()
+    local w = createWindow("Bee Swarm Simulator", "Auto-Farm Suite", 470, 560,
+        UDim2.new(0.5, -235 + math.random(-70,70), 0.5, -280 + math.random(-60,60)))
+    w:AddSection("Auto Farm")
+    w:AddToggle("Auto Collect Pollen (fire)", false, function(v) w._autoPollen = v end\n    end\nend\n\nreturn M\n

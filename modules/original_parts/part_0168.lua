@@ -1,0 +1,1255 @@
+n)
+    end, Theme.Green)
+    w:AddButton("Mass Hatch Eggs", function() massHatchEggs() end)
+    w:AddButton("Fire All Prompts", function() fireAllPrompts() end)
+    w:AddButton("Sell Everything", function() sellEverything() end)
+    w:AddButton("Equip Best Tool", function() equipBestTool() end)
+    w:AddSection("Scan")
+    w:AddButton("Scan Brainrot Values", function()
+        local vals = scanBrainrotValues()
+        local n = math.min(#vals, 5)
+        local msg = ""
+        for i = 1, n do msg = msg .. vals[i].name .. " (" .. vals[i].value .. ")\n" end
+        if msg == "" then msg = "No brainrots found." end
+        notify("Brainrot Scan (" .. #vals .. " total)", msg, 6, Theme.Accent)
+    end)
+    w:AddSection("Follow")
+    w:AddDropdown("Follow Player", getPlayerNames(false), (Players:GetPlayers()[1] and Players:GetPlayers()[1].Name) or "nil", function(v) w._followTarget = v end)
+    w:AddToggle("Follow Target", false, function(v) w._follow = v end)
+    w:AddSlider("Follow Distance", 1, 50, 5, "studs", 0, function(v) w._followDist = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Box ESP", false, function(v) BoxESP:Set(v) end)
+    w:AddToggle("Brainrot ESP", false, function(v) w._brEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Money ESP", false, function(v) w._mEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Radar", false, function(v) Radar:Set(v) end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 500)
+    w:AddSection("Combat (steal defense)")
+    w:AddToggle("Spin (dodge aim)", false, function(v) Spin:Set(v) end)
+    w:AddToggle("Fling Nearest (on contact)", false, function(v) w._fling = v end)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    w:AddButton("Rejoin", function() pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end) end)
+    task.spawn(function()
+        while true do
+            task.wait(0.2)
+            if w._follow then
+                local p = findPlayerByName(w._followTarget or "")
+                if p then followPlayer(p, w._followDist or 5) end
+            end
+            if w._fling then
+                local root = getRoot()
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and root then
+                        if (plr.Character.HumanoidRootPart.Position - root.Position).Magnitude < 8 then
+                            pcall(function() root.AssemblyAngularVelocity = Vector3.new(9e4, 9e4, 9e4) end)
+                        end
+                    end
+                end
+            end
+            if w._brEsp then highlightKeywords({ "brainrot", "unit", "pet", "meme", "skibidi" }, Color3.fromRGB(180,120,255)) end
+            if w._mEsp then highlightKeywords({ "coin", "cash", "money", "gem" }, Color3.fromRGB(255,200,40)) end
+        end
+    end)
+    notify("Brainrot Master", "Loaded. Universal brainrot farm.", 4, Theme.Accent)
+    return w
+end
+
+-- Find every part named with a brainrot keyword (meme units, pets, units).
+local function findBrainrotParts(keywords)
+    keywords = keywords or { "brainrot", "unit", "pet", "meme", "skibidi", "sigma", "rizz", "gyatt", "ohio", "npc", "entity", "char" }
+    local out = {}
+    for _, d in ipairs(Workspace:GetDescendants()) do
+        if d:IsA("BasePart") and not d:IsDescendantOf(getChar() or Workspace) then
+            local n = d.Name:lower()
+            for _, kw in ipairs(keywords) do
+                if n:find(kw) then table.insert(out, d); break end
+            end
+        end
+    end
+    return out
+end
+
+-- Bring all matching parts to the local player (the classic "collect all").
+local function brainrotBring(keywords)
+    local root = getRoot()
+    if not root then return 0 end
+    local count = 0
+    for _, p in ipairs(findBrainrotParts(keywords)) do
+        pcall(function() p.CFrame = root.CFrame end)
+        count = count + 1
+    end
+    return count
+end
+
+-- Auto-steal: teleport to the nearest other player's brainrot/character and touch it.
+local function autoStealNearest(range)
+    local root = getRoot()
+    if not root then return end
+    local best, bestD = nil, range or 9999
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local d = (hrp.Position - root.Position).Magnitude
+                if d < bestD then bestD = d; best = hrp end
+            end
+        end
+    end
+    if best then
+        pcall(function() root.CFrame = best.CFrame * CFrame.new(0, 0, -3) end)
+        return true
+    end
+    return false
+end
+
+-- Spawner: rapidly fire all spawn-related remotes (IdiotHub / brainrot spawner style).
+local function brainrotSpawn()
+    fireRemotes("spawn"); fireRemotes("summon"); fireRemotes("buy"); fireRemotes("egg"); fireRemotes("hatch")
+end
+
+-- Anti-steal: when another player gets close, fling them away or teleport up.
+local function antiSteal(range)
+    local root = getRoot()
+    if not root then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local d = (hrp.Position - root.Position).Magnitude
+                if d < (range or 15) then
+                    pcall(function() root.CFrame = root.CFrame + Vector3.new(0, 20, 0) end)
+                end
+            end
+        end
+    end
+end
+
+-- Collect all coins/money/cash on the map.
+local function collectAllMoney(range)
+    local root = getRoot()
+    if not root then return 0 end
+    local count = 0
+    for _, d in ipairs(Workspace:GetDescendants()) do
+        if d:IsA("BasePart") then
+            local n = d.Name:lower()
+            if n:find("coin") or n:find("cash") or n:find("money") or n:find("pickup") or n:find("gem") then
+                if (d.Position - root.Position).Magnitude < (range or 9999) then
+                    pcall(function() d.CFrame = root.CFrame end)
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count
+end
+
+--==============================================================================
+--// STEAL A BRAINROT  (expanded - full IdiotHub/Divine/Pynova feature set)
+--==============================================================================
+local function StealABrainrotPro()
+    local w = createWindow("Steal a Brainrot PRO", "Full brainrot suite", 490, 640, randPos(490, 640))
+    w:AddSection("Auto Steal")
+    w:AddToggle("Auto Steal (TP to players)", false, function(v) w._autoSteal = v end, "Teleport to nearest player to steal")
+    w:AddSlider("Steal Range", 50, 9999, 500, "studs", 0, function(v) w._stealRange = v end)
+    w:AddSlider("Steal Delay", 0.1, 5, 0.5, "s", 2, function(v) w._stealDelay = v end)
+    w:AddToggle("Bring All Brainrots To Me", false, function(v) w._bringAll = v end)
+    w:AddToggle("Auto Touch Nearest Player", false, function(v) w._touchPlayers = v end)
+    w:AddToggle("Anti-Steal (defend)", false, function(v) w._antiSteal = v end)
+    w:AddSlider("Anti-Steal Range", 5, 50, 15, "studs", 0, function(v) w._asRange = v end)
+    w:AddSection("Spawner / Buy")
+    w:AddToggle("Auto Spawn (remotes)", false, function(v) w._spawn = v end)
+    w:AddSlider("Spawn Delay", 0.5, 10, 1, "s", 2, function(v) w._spawnDelay = v end)
+    w:AddToggle("Auto Buy Eggs", false, function(v) w._autoEggs = v end)
+    w:AddToggle("Auto Equip Best", false, function(v) w._equip = v end)
+    w:AddToggle("Auto Sell", false, function(v) w._sell = v end)
+    w:AddSection("Money / Collect")
+    w:AddToggle("Auto Collect Coins", false, function(v) w._coins = v end)
+    w:AddToggle("Collect All Money Now", false, function(v)
+        local n = collectAllMoney(9999)
+        notify("SAB", "Brought " .. n .. " money parts.", 3, Theme.Accent)
+    end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Box ESP", false, function(v) BoxESP:Set(v) end)
+    w:AddToggle("Brainrot ESP", false, function(v) w._brEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Money ESP", false, function(v) w._mEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Radar", false, function(v) Radar:Set(v) end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 500)
+    w:AddSection("Teleport")
+    w:AddButton("Teleport to Nearest Player", function() autoStealNearest(9999) end, Theme.Accent)
+    w:AddButton("Bring All Brainrots", function()
+        local n = brainrotBring()
+        notify("SAB", "Brought " .. n .. " brainrots.", 3, Theme.Green)
+    end, Theme.Green)
+    w:AddButton("Fling Nearest Player", function()
+        local root = getRoot()
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                pcall(function()
+                    root.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -2)
+                    root.AssemblyAngularVelocity = Vector3.new(9e4, 9e4, 9e4)
+                end)
+                break
+            end
+        end
+    end, Theme.Red)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    w:AddButton("Rejoin", function() pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end) end)
+    local lastSteal, lastSpawn = 0, 0
+    task.spawn(function()
+        while true do
+            task.wait(0.2)
+            local root = getRoot()
+            if root then
+                if w._autoSteal and tick() - lastSteal >= (w._stealDelay or 0.5) then
+                    lastSteal = tick()
+                    autoStealNearest(w._stealRange or 500)
+                end
+                if w._bringAll then brainrotBring() end
+                if w._touchPlayers then
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                            if (plr.Character.HumanoidRootPart.Position - root.Position).Magnitude < 12 then
+                                pcall(function() firetouchinterest(root, plr.Character.HumanoidRootPart, 0) end)
+                            end
+                        end
+                    end
+                end
+                if w._antiSteal then antiSteal(w._asRange or 15) end
+                if w._coins then collectAllMoney(200) end
+                if w._autoEggs then fireRemotes("egg"); fireRemotes("buyegg") end
+                if w._equip then fireRemotes("equip") end
+                if w._sell then fireRemotes("sell") end
+                if w._brEsp then highlightKeywords({ "brainrot", "unit", "pet", "meme", "skibidi", "sigma" }, Color3.fromRGB(180,120,255)) end
+                if w._mEsp then highlightKeywords({ "coin", "cash", "money", "gem", "pickup" }, Color3.fromRGB(255,200,40)) end
+            end
+            if w._spawn and tick() - lastSpawn >= (w._spawnDelay or 1) then
+                lastSpawn = tick()
+                brainrotSpawn()
+            end
+        end
+    end)
+    notify("Steal a Brainrot PRO", "Loaded. Full auto-steal/spawner suite.", 4, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// GROW A GARDEN  (expanded - full IdiotHub GAG feature set)
+--==============================================================================
+local function GrowAGardenPro()
+    local w = createWindow("Grow a Garden PRO", "Full garden suite", 490, 640, randPos(490, 640))
+    w:AddSection("Auto Plant / Grow")
+    w:AddToggle("Auto Plant Seeds", false, function(v) w._plant = v end)
+    w:AddToggle("Auto Water", false, function(v) w._water = v end)
+    w:AddToggle("Auto Fertilize", false, function(v) w._fert = v end)
+    w:AddToggle("Auto Harvest", false, function(v) w._harvest = v end)
+    w:AddSection("Auto Economy")
+    w:AddToggle("Auto Sell", false, function(v) w._sell = v end)
+    w:AddToggle("Auto Buy Seeds", false, function(v) w._buySeeds = v end)
+    w:AddToggle("Auto Buy Gear", false, function(v) w._buyGear = v end)
+    w:AddToggle("Auto Collect Drops", false, function(v) w._collect = v end)
+    w:AddSlider("Collect Range", 20, 1000, 200, "studs", 0, function(v) w._crange = v end)
+    w:AddSection("Mutations / Sprinklers")
+    w:AddToggle("Auto Use Sprinkler", false, function(v) w._sprinkler = v end)
+    w:AddToggle("Auto Mutation (best-effort)", false, function(v) w._mutation = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Fruit / Crop ESP", false, function(v) w._fEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Seed / Shop ESP", false, function(v) w._sEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Rare Drop ESP", false, function(v) w._rEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 400)
+    w:AddSection("Teleport - Shops")
+    w:AddButton("TP: Seed Shop", function() fireRemotes("shop"); teleportTo(Vector3.new(60, 5, 0)) end)
+    w:AddButton("TP: Gear Shop", function() teleportTo(Vector3.new(-60, 5, 0)) end)
+    w:AddButton("TP: Sell Area", function() teleportTo(Vector3.new(0, 5, 60)) end)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    w:AddButton("Rejoin", function() pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end) end)
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            local root = getRoot()
+            if w._plant then fireFilter("plant"); fireFilter("seed") end
+            if w._water then fireFilter("water") end
+            if w._fert then fireFilter("fertilize"); fireFilter("fert") end
+            if w._harvest then fireFilter("harvest"); fireFilter("collect") end
+            if w._sell then fireFilter("sell") end
+            if w._buySeeds then fireFilter("buyseed"); fireFilter("buy") end
+            if w._buyGear then fireFilter("buygear") end
+            if w._sprinkler then fireFilter("sprinkler") end
+            if w._mutation then fireFilter("mutation"); fireFilter("mutate") end
+            if root and w._collect then
+                touchNamed(root, { "fruit", "drop", "crop", "vegetable", "seed" }, w._crange or 200)
+            end
+            if w._fEsp then highlightKeywords({ "fruit", "crop", "vegetable", "plant", "harvest" }, Color3.fromRGB(120,220,120)) end
+            if w._sEsp then highlightKeywords({ "seed", "shop", "gear", "sprinkler" }, Color3.fromRGB(86,156,240)) end
+            if w._rEsp then highlightKeywords({ "rare", "legendary", "mythic", "gold", "rainbow" }, Color3.fromRGB(255,200,40)) end
+        end
+    end)
+    notify("Grow a Garden PRO", "Loaded. Full auto-plant/sell suite.", 4, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// GROW A GARDEN 2  (IdiotHub GAG2)
+--==============================================================================
+local function GrowAGarden2()
+    local w = createWindow("Grow a Garden 2", "GAG2 Suite", 480, 620, randPos(480, 620))
+    w:AddSection("Auto Farm")
+    w:AddToggle("Auto Plant", false, function(v) w._plant = v end)
+    w:AddToggle("Auto Water", false, function(v) w._water = v end)
+    w:AddToggle("Auto Harvest", false, function(v) w._harvest = v end)
+    w:AddToggle("Auto Sell", false, function(v) w._sell = v end)
+    w:AddToggle("Auto Buy Seeds", false, function(v) w._buy = v end)
+    w:AddToggle("Auto Collect", false, function(v) w._collect = v end)
+    w:AddSlider("Range", 20, 1000, 200, "studs", 0, function(v) w._range = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Fruit ESP", false, function(v) w._fEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Rare ESP", false, function(v) w._rEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 400)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            local root = getRoot()
+            if w._plant then fireFilter("plant"); fireFilter("seed") end
+            if w._water then fireFilter("water") end
+            if w._harvest then fireFilter("harvest"); fireFilter("collect") end
+            if w._sell then fireFilter("sell") end
+            if w._buy then fireFilter("buy"); fireFilter("seed") end
+            if root and w._collect then touchNamed(root, { "fruit", "drop", "crop" }, w._range or 200) end
+            if w._fEsp then highlightKeywords({ "fruit", "crop", "plant" }, Color3.fromRGB(120,220,120)) end
+            if w._rEsp then highlightKeywords({ "rare", "legendary", "gold" }, Color3.fromRGB(255,200,40)) end
+        end
+    end)
+    notify("Grow a Garden 2", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// SPLIT OR STEAL BRAINROT  (PvB / IdiotHub)
+--==============================================================================
+local function SplitOrStealBrainrot()
+    local w = createWindow("Split or Steal Brainrot", "PvB Suite", 480, 620, randPos(480, 620))
+    w:AddSection("Steal")
+    w:AddToggle("Auto Steal", false, function(v) w._steal = v end)
+    w:AddSlider("Delay", 0.1, 5, 0.4, "s", 2, function(v) w._delay = v end)
+    w:AddToggle("Bring All Brainrots", false, function(v) w._bring = v end)
+    w:AddToggle("Anti-Steal", false, function(v) w._anti = v end)
+    w:AddSection("Decision")
+    w:AddToggle("Always Split", false, function(v) w._split = v end)
+    w:AddToggle("Always Steal", false, function(v) w._alwaysSteal = v end)
+    w:AddSection("Spawn / Buy")
+    w:AddToggle("Auto Spawn", false, function(v) w._spawn = v end)
+    w:AddToggle("Auto Buy Eggs", false, function(v) w._eggs = v end)
+    w:AddSection("Collect")
+    w:AddToggle("Auto Collect Coins", false, function(v) w._coins = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Brainrot ESP", false, function(v) w._brEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 500)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    local last = 0
+    task.spawn(function()
+        while true do
+            task.wait(0.2)
+            local root = getRoot()
+            if root then
+                if w._steal and tick() - last >= (w._delay or 0.4) then
+                    last = tick()
+                    autoStealNearest(500)
+                end
+                if w._bring then brainrotBring() end
+                if w._anti then antiSteal(15) end
+                if w._coins then collectAllMoney(300) end
+                if w._split then fireRemotes("split") end
+                if w._alwaysSteal then fireRemotes("steal") end
+                if w._spawn then brainrotSpawn() end
+                if w._eggs then fireRemotes("egg"); fireRemotes("buy") end
+                if w._brEsp then highlightKeywords({ "brainrot", "unit", "pet" }, Color3.fromRGB(180,120,255)) end
+            end
+        end
+    end)
+    notify("Split or Steal Brainrot", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// SWING OBBY FOR BRAINROTS!  (FluxXYZ Clamor Hub)
+--==============================================================================
+local function SwingObbyBrainrots()
+    local w = createWindow("Swing Obby for Brainrots!", "Swing Obby Suite", 480, 620, randPos(480, 620))
+    w:AddSection("Auto Win")
+    w:AddToggle("Auto Swing (click)", false, function(v) w._swing = v end)
+    w:AddSlider("Swing Delay", 0.1, 2, 0.3, "s", 2, function(v) w._delay = v end)
+    w:AddToggle("Auto Skip Stage (TP forward)", false, function(v) w._skip = v end)
+    w:AddSlider("Skip Distance", 10, 200, 40, "studs", 0, function(v) w._skipDist = v end)
+    w:AddToggle("Auto Collect Brainrots", false, function(v) w._collect = v end)
+    w:AddSection("Cheats")
+    w:AddToggle("Noclip", false, function(v) Movement.Noclip = v end)
+    w:AddToggle("Infinite Jump", false, function(v) Movement.InfJump = v end)
+    w:AddToggle("Fly", false, function(v) Movement.Fly.Enabled = v end)
+    w:AddSlider("Fly Speed", 10, 400, 80, "", 0, function(v) Movement.Fly.Speed = v end)
+    w:AddToggle("Anti Fall", false, function(v) NoFall:Set(v) end)
+    w:AddToggle("Click Teleport", false, function(v) ClickTP.Enabled = v end)
+    w:AddSection("Win")
+    w:AddButton("TP to Finish (search)", function()
+        local best, by = nil, -math.huge
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            if d:IsA("BasePart") then
+                local n = d.Name:lower()
+                if d.Position.Y > by and (n:find("finish") or n:find("win") or n:find("brainrot") and n:find("end")) then
+                    by = d.Position.Y; best = d
+                end
+            end
+        end
+        if best then teleportTo(best.Position + Vector3.new(0, 5, 0)) else notify("Swing Obby", "No finish found.", 3, Theme.Yellow) end
+    end, Theme.Green)
+    w:AddButton("TP Up 100", function() local r = getRoot(); if r then r.CFrame = r.CFrame + Vector3.new(0, 100, 0) end end)
+    w:AddSection("Safety")
+    w:AddToggle("Disable Kill Bricks", false, function(v) w._noKill = v end)
+    w:AddToggle("God Mode", false, function(v) w._god = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Brainrot ESP", false, function(v) w._bEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    local last = 0
+    task.spawn(function()
+        while true do
+            task.wait(0.15)
+            local root = getRoot()
+            if root then
+                if w._swing and tick() - last >= (w._delay or 0.3) then
+                    last = tick()
+                    swingTool()
+                    VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, true, LocalPlayer, 1)
+                    VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, false, LocalPlayer, 1)
+                end
+                if w._skip then root.CFrame = root.CFrame * CFrame.new(0, 0, -(w._skipDist or 40)) end
+                if w._collect then brainrotBring({ "brainrot", "unit", "brain", "rot" }) end
+                if w._god then local h = getHum(); if h then h.Health = h.MaxHealth end end
+                if w._noKill then
+                    pcall(function()
+                        for _, d in ipairs(Workspace:GetDescendants()) do
+                            if d:IsA("BasePart") then
+                                local n = d.Name:lower()
+                                if n:find("kill") or n:find("lava") or n:find("danger") then d.CanTouch = false end
+                            end
+                        end
+                    end)
+                end
+                if w._bEsp then highlightKeywords({ "brainrot", "brain", "rot", "unit" }, Color3.fromRGB(180,120,255)) end
+            end
+        end
+    end)
+    notify("Swing Obby for Brainrots!", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// PARKOUR FOR BRAINROTS!  (rscripts pakour-for-brainrots)
+--==============================================================================
+local function ParkourForBrainrots()
+    local w = createWindow("Parkour for Brainrots!", "Obby + Brainrot Suite", 480, 620, randPos(480, 620))
+    w:AddSection("Auto Win")
+    w:AddToggle("Auto Skip Forward", false, function(v) w._skip = v end)
+    w:AddSlider("Skip Distance", 10, 300, 50, "studs", 0, function(v) w._skipDist = v end)
+    w:AddSlider("Skip Delay", 0.1, 3, 0.5, "s", 2, function(v) w._skipDelay = v end)
+    w:AddToggle("Auto Collect Brainrots", false, function(v) w._collect = v end)
+    w:AddToggle("Auto Steal from Players", false, function(v) w._steal = v end)
+    w:AddSection("Movement Cheats")
+    w:AddToggle("Noclip", false, function(v) Movement.Noclip = v end)
+    w:AddToggle("Infinite Jump", false, function(v) Movement.InfJump = v end)
+    w:AddToggle("Fly", false, function(v) Movement.Fly.Enabled = v end)
+    w:AddSlider("Fly Speed", 10, 400, 100, "", 0, function(v) Movement.Fly.Speed = v end)
+    w:AddToggle("Jump Power", false, function(v) Movement.JumpPower.Enabled = v end)
+    w:AddSlider("Jump Power", 50, 500, 150, "", 0, function(v) Movement.JumpPower.Value = v end)
+    w:AddToggle("Walk Speed", false, function(v) Movement.WalkSpeed.Enabled = v end)
+    w:AddSlider("Speed", 16, 200, 50, "", 0, function(v) Movement.WalkSpeed.Value = v end)
+    w:AddToggle("Anti Fall", false, function(v) NoFall:Set(v) end)
+    w:AddToggle("Click Teleport", false, function(v) ClickTP.Enabled = v end)
+    w:AddSection("Win / TP")
+    w:AddButton("TP to Finish", function()
+        local best, by = nil, -math.huge
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            if d:IsA("BasePart") then
+                local n = d.Name:lower()
+                if d.Position.Y > by and (n:find("finish") or n:find("win") or n:find("end")) then by = d.Position.Y; best = d end
+            end
+        end
+        if best then teleportTo(best.Position + Vector3.new(0, 5, 0)) else notify("Parkour", "No finish found.", 3, Theme.Yellow) end
+    end, Theme.Green)
+    w:AddButton("TP Up 200", function() local r = getRoot(); if r then r.CFrame = r.CFrame + Vector3.new(0, 200, 0) end end)
+    w:AddSection("Safety")
+    w:AddToggle("Disable Kill Bricks", false, function(v) w._noKill = v end)
+    w:AddToggle("God Mode", false, function(v) w._god = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Brainrot ESP", false, function(v) w._bEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    local last = 0
+    task.spawn(function()
+        while true do
+            task.wait(0.2)
+            local root = getRoot()
+            if root then
+                if w._skip and tick() - last >= (w._skipDelay or 0.5) then
+                    last = tick()
+                    root.CFrame = root.CFrame * CFrame.new(0, 0, -(w._skipDist or 50))
+                end
+                if w._collect then brainrotBring({ "brainrot", "brain", "rot", "unit" }) end
+                if w._steal then autoStealNearest(9999) end
+                if w._god then local h = getHum(); if h then h.Health = h.MaxHealth end end
+                if w._noKill then
+                    pcall(function()
+                        for _, d in ipairs(Workspace:GetDescendants()) do
+                            if d:IsA("BasePart") then
+                                local n = d.Name:lower()
+                                if n:find("kill") or n:find("lava") or n:find("danger") then d.CanTouch = false end
+                            end
+                        end
+                    end)
+                end
+                if w._bEsp then highlightKeywords({ "brainrot", "brain", "rot", "unit" }, Color3.fromRGB(180,120,255)) end
+            end
+        end
+    end)
+    notify("Parkour for Brainrots!", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// PET CATCHERS  (IdiotHub)
+--==============================================================================
+local function PetCatchers()
+    local w = createWindow("Pet Catchers", "Catch Suite", 480, 600, randPos(480, 600))
+    w:AddSection("Auto Catch")
+    w:AddToggle("Auto Catch Pets", false, function(v) w._catch = v end)
+    w:AddSlider("Catch Range", 20, 1000, 200, "studs", 0, function(v) w._range = v end)
+    w:AddToggle("Auto Sell Duplicates", false, function(v) w._sell = v end)
+    w:AddToggle("Auto Equip Best", false, function(v) w._equip = v end)
+    w:AddToggle("Auto Hatch", false, function(v) w._hatch = v end)
+    w:AddSection("Collect")
+    w:AddToggle("Auto Collect Coins", false, function(v) w._coins = v end)
+    w:AddToggle("Bring All Pets", false, function(v) w._bring = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Pet ESP", false, function(v) w._pEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Coin ESP", false, function(v) w._cEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 400)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            local root = getRoot()
+            if root then
+                if w._catch then touchNamed(root, { "pet", "catch", "animal" }, w._range or 200) end
+                if w._sell then fireRemotes("sell") end
+                if w._equip then fireRemotes("equip") end
+                if w._hatch then fireRemotes("hatch"); fireRemotes("egg") end
+                if w._coins then collectAllMoney(300) end
+                if w._bring then brainrotBring({ "pet", "animal", "catch" }) end
+                if w._pEsp then highlightKeywords({ "pet", "animal", "catch" }, Color3.fromRGB(180,120,255)) end
+                if w._cEsp then highlightKeywords({ "coin", "cash", "money" }, Color3.fromRGB(255,200,40)) end
+            end
+        end
+    end)
+    notify("Pet Catchers", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// PETS GO  (IdiotHub)
+--==============================================================================
+local function PetsGo()
+    local w = createWindow("Pets Go", "Roll & Collect Suite", 480, 600, randPos(480, 600))
+    w:AddSection("Auto")
+    w:AddToggle("Auto Roll", false, function(v) w._roll = v end)
+    w:AddSlider("Roll Delay", 0.1, 5, 0.5, "s", 2, function(v) w._delay = v end)
+    w:AddToggle("Auto Hatch", false, function(v) w._hatch = v end)
+    w:AddToggle("Auto Equip Best", false, function(v) w._equip = v end)
+    w:AddToggle("Auto Sell Duplicates", false, function(v) w._sell = v end)
+    w:AddSection("Collect")
+    w:AddToggle("Auto Collect Coins", false, function(v) w._coins = v end)
+    w:AddToggle("Bring All Coins", false, function(v) w._bring = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Rare Pet ESP", false, function(v) w._pEsp = v; if not v then clearAutoHL() end end)
+    w:AddToggle("Coin ESP", false, function(v) w._cEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 400)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    local last = 0
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if w._roll and tick() - last >= (w._delay or 0.5) then
+                last = tick()
+                fireRemotes("roll"); fireRemotes("gacha")
+            end
+            if w._hatch then fireRemotes("hatch") end
+            if w._equip then fireRemotes("equip") end
+            if w._sell then fireRemotes("sell") end
+            local root = getRoot()
+            if root then
+                if w._coins then collectAllMoney(300) end
+                if w._bring then brainrotBring({ "coin", "cash", "money" }) end
+                if w._pEsp then highlightKeywords({ "pet", "rare", "legendary", "egg" }, Color3.fromRGB(180,120,255)) end
+                if w._cEsp then highlightKeywords({ "coin", "cash", "money" }, Color3.fromRGB(255,200,40)) end
+            end
+        end
+    end)
+    notify("Pets Go", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// TAP SIMULATOR  (IdiotHub)
+--==============================================================================
+local function TapSimulatorPro()
+    local w = createWindow("Tap Simulator PRO", "Auto-Tap Suite", 470, 600, randPos(470, 600))
+    w:AddSection("Auto")
+    w:AddToggle("Auto Tap", false, function(v) w._tap = v end)
+    w:AddSlider("Tap Delay", 0.01, 1, 0.03, "s", 2, function(v) w._delay = v end)
+    w:AddToggle("Auto Rebirth", false, function(v) w._rebirth = v end)
+    w:AddToggle("Auto Buy Upgrades", false, function(v) w._buy = v end)
+    w:AddToggle("Auto Hatch Pets", false, function(v) w._hatch = v end)
+    w:AddToggle("Auto Equip Best", false, function(v) w._equip = v end)
+    w:AddSection("Collect")
+    w:AddToggle("Auto Collect", false, function(v) w._collect = v end)
+    w:AddToggle("Bring All Coins", false, function(v) w._bring = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Coin ESP", false, function(v) w._cEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 400)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    local last = 0
+    task.spawn(function()
+        while true do
+            task.wait(0.01)
+            if w._tap and tick() - last >= (w._delay or 0.03) then
+                last = tick()
+                pcall(function()
+                    VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, true, LocalPlayer, 1)
+                    VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, false, LocalPlayer, 1)
+                end)
+                fireRemotes("tap"); fireRemotes("click")
+            end
+            if w._rebirth then fireRemotes("rebirth") end
+            if w._buy then fireRemotes("buy"); fireRemotes("upgrade") end
+            if w._hatch then fireRemotes("hatch") end
+            if w._equip then fireRemotes("equip") end
+            local root = getRoot()
+            if root then
+                if w._collect then collectAllMoney(300) end
+                if w._bring then brainrotBring({ "coin", "cash" }) end
+                if w._cEsp then highlightKeywords({ "coin", "cash", "money" }, Color3.fromRGB(255,200,40)) end
+            end
+        end
+    end)
+    notify("Tap Simulator PRO", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// CARD RNG  (IdiotHub TycoonRng / CardRng / AnimeCardBattle)
+--==============================================================================
+local function CardRNG()
+    local w = createWindow("Card RNG", "Roll & Battle Suite", 470, 580, randPos(470, 580))
+    w:AddSection("Auto Roll")
+    w:AddToggle("Auto Roll Cards", false, function(v) w._roll = v end)
+    w:AddSlider("Delay", 0.1, 5, 0.5, "s", 2, function(v) w._delay = v end)
+    w:AddToggle("Auto Claim", false, function(v) w._claim = v end)
+    w:AddToggle("Auto Sell Duplicates", false, function(v) w._sell = v end)
+    w:AddSection("Battle")
+    w:AddToggle("Auto Play Battle", false, function(v) w._battle = v end)
+    w:AddToggle("Auto Use Best Card", false, function(v) w._best = v end)
+    w:AddSection("Collect")
+    w:AddToggle("Auto Collect Rewards", false, function(v) w._collect = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Rare Card ESP", false, function(v) w._cEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 200, 350)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    local last = 0
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if w._roll and tick() - last >= (w._delay or 0.5) then
+                last = tick()
+                fireRemotes("roll"); fireRemotes("gacha"); fireRemotes("card")
+            end
+            if w._claim then fireRemotes("claim") end
+            if w._sell then fireRemotes("sell") end
+            if w._battle then fireRemotes("battle"); fireRemotes("play"); fireRemotes("fight") end
+            if w._best then fireRemotes("best"); fireRemotes("use") end
+            if w._collect then fireRemotes("collect"); fireRemotes("reward") end
+            if w._cEsp then highlightKeywords({ "card", "rare", "legendary", "mythic" }, Color3.fromRGB(255,200,40)) end
+        end
+    end)
+    notify("Card RNG", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// BGSI / BRAINROT GIANT  (IdiotHub)
+--==============================================================================
+local function BrainrotGiant()
+    local w = createWindow("Brainrot Giant", "Growth Suite", 470, 580, randPos(470, 580))
+    w:AddSection("Auto Grow")
+    w:AddToggle("Auto Eat / Absorb", false, function(v) w._eat = v end)
+    w:AddToggle("Auto Collect", false, function(v) w._collect = v end)
+    w:AddToggle("Bring All Food", false, function(v) w._bring = v end)
+    w:AddSection("Combat")
+    w:AddToggle("Auto Fight Smaller", false, function(v) w._fight = v end)
+    w:AddSection("Visuals")
+    w:AddToggle("Player ESP", false, function(v) ESP.Enable(v) end)
+    w:AddToggle("Food ESP", false, function(v) w._fEsp = v; if not v then clearAutoHL() end end)
+    w:AddSection("Movement")
+    addMovement(w, 250, 400)
+    w:AddSection("Server")
+    w:AddButton("Server Hop", function() ServerHop.hop() end, Theme.Yellow)
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            local root = getRoot()
+            if root then
+                if w._eat then touchNamed(root, { "food", "eat", "absorb", "orb" }, 200) end
+                if w._collect then collectAllMoney(300) end
+                if w._bring then brainrotBring({ "food", "eat", "orb" }) end
+                if w._fight then fireRemotes("fight"); fireRemotes("attack") end
+                if w._fEsp then highlightKeywords({ "food", "eat", "orb", "absorb" }, Color3.fromRGB(120,200,120)) end
+            end
+        end
+    end)
+    notify("Brainrot Giant", "Loaded.", 3, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// DIVINE HUB / DARK HUB / GENERAL LOADER TARGETS
+--   Adds "Load External" buttons for the many SAB/GAG script repos the user
+--   referenced, each wired through the safe external loader.
+--==============================================================================
+local function BrainrotExternalLoader()
+    local w = createWindow("Brainrot Loaders", "External SAB/GAG scripts", 490, 620, randPos(490, 620))
+    w:AddSection("Steal a Brainrot Scripts")
+    local sabScripts = {
+        { name = "Divine Hub", url = "https://raw.githubusercontent.com/Armando221/divinehub/refs/heads/main/divinehub.lua" },
+        { name = "Unrexl SAB", url = "https://raw.githubusercontent.com/unrexl/Scripts/refs/heads/main/StealABrainrot" },
+        { name = "Wonik Library", url = "https://raw.githubusercontent.com/Wonik99/library-hub/refs/heads/main/main.lua" },
+        { name = "Dark Hub SAB", url = "https://raw.githubusercontent.com/Jayjayart/Sabscriptdarkhub.lua/refs/heads/main/darkhubstealabrainrotscript.lua" },
+        { name = "Badshah Spawner", url = "https://raw.githubusercontent.com/BadshahScript/StealaBrainrot/refs/heads/main/Spawner01Brainrot.lua" },
+        { name = "Shiba SAB", url = "https://raw.githubusercontent.com/scriptjame/stealabrainrot/refs/heads/main/shiba.lua" },
+        { name = "Pynova Ninja", url = "https://raw.githubusercontent.com/PynovaGanz/eyeson-palestine/refs/heads/main/imaninjaforbrainrots.lua" },
+        { name = "r0blox Finder", url = "https://raw.githubusercontent.com/r0bloxlucker/sabfinderwithoutdualhook/refs/heads/main/finderv2.lua" },
+    }
+    for _, s in ipairs(sabScripts) do
+        w:AddButton("Load: " .. s.name, function() runExternalScript(s.url, s.name) end)
+    end
+    w:AddSection("Grow a Garden Scripts")
+    local gagScripts = {
+        { name = "Kenniel GAG", url = "https://raw.githubusercontent.com/Kenniel123/Grow-a-garden/refs/heads/main/Grow%20A%20Garden" },
+        { name = "Xranbfg GAG", url = "https://raw.githubusercontent.com/Xranbfg132/Gt1t31t456h67/refs/heads/main/gag" },
+        { name = "IdiotHub GAG", url = "https://raw.githubusercontent.com/IdiotHub/Scripts/refs/heads/main/GAG/GAG.lua" },
+        { name = "IdiotHub GAG2", url = "https://raw.githubusercontent.com/IdiotHub/Scripts/refs/heads/main/GAG2/UI_FREE.lua" },
+        { name = "FluxXYZ Swing Obby", url = "https://raw.githubusercontent.com/FluxXYZ/Clamor-Hub/main/Swing%20Obby%20for%20Brainrots.lua" },
+    }
+    for _, s in ipairs(gagScripts) do
+        w:AddButton("Load: " .. s.name, function() runExternalScript(s.url, s.name) end)
+    end
+    w:AddSection("Multi-Game Loaders")
+    local multiLoaders = {
+        { name = "IdiotHub", url = "https://raw.githubusercontent.com/IdiotHub/Scripts/main/Loader" },
+        { name = "Quartyz", url = "https://raw.githubusercontent.com/xQuartyx/QuartyzScript/main/Loader.lua" },
+        { name = "Achaotic", url = "https://raw.githubusercontent.com/AchaoticSoftworks/AchaoticSources/refs/heads/main/Loader.luau" },
+        { name = "BaconHub", url = "https://raw.githubusercontent.com/BaconHub1/Autoupdate/refs/heads/main/Cuz%20yes" },
+        { name = "meobeo8", url = "https://raw.githubusercontent.com/meobeo8/a/a/a" },
+        { name = "Oridwan SAB", url = "https://gist.githubusercontent.com/oridwan303-sketch/f5e4f6bca51cca2228b04a7c0e098be5/raw/ae7369ab801b5ed52af30127a34d158d55df6b45/gistfile1.txt" },
+        { name = "Parkour for Brainrots", url = "https://rscripts.net/raw/pakour-for-brainrots_1775350832199_EqbIF4yubQ.txt" },
+        { name = "Split/Steal", url = "https://raw.githubusercontent.com/StrenTheBeginner/asenranhroi/refs/heads/main/splitorsteala" },
+    }
+    for _, s in ipairs(multiLoaders) do
+        w:AddButton("Load: " .. s.name, function() runExternalScript(s.url, s.name) end)
+    end
+    w:AddSection("Info")
+    w:AddLabel("External loads need an executor (HttpGet+loadstring).")
+    w:AddLabel("Each opens that repo's script via the safe loader.")
+    notify("Brainrot Loaders", "Loaded. Click a script to load externally.", 4, Theme.Accent)
+    return w
+end
+
+--==============================================================================
+--// EXTERNAL SCRIPT MANAGER  ("ScriptHub")
+--   Replicates DaraHub's Mainloader architecture: a curated library of external
+--   scripts loaded via loadstring(game:HttpGet(url))(), plus a custom URL
+--   loader, PlaceId auto-detection (ScriptGroups), executor info, an error
+--   stack + loading log, and queue_on_teleport auto-reload support.
+--   NOTE: external loading requires an executor (game:HttpGet + loadstring);
+--   in plain Roblox Studio it safely reports unsupported and falls back.
+--==============================================================================
+
+-- Executor info (DaraHub getExecutorInfo)
+local function getExecutorInfo()
+    local info = "Roblox Studio (no executor)"
+    pcall(function()
+        if identifyexecutor then
+            local exec = identifyexecutor()
+            if type(exec) == "table" then info = exec.name or exec.executor or tostring(exec)
+            elseif type(exec) == "string" then info = exec end
+        end
+    end)
+    return info
+end
+
+-- Capability detection
+local HttpGet = (game.GetService and pcall(function() return game:GetService("HttpService") end)) and nil
+local function supportsHttp()
+    local ok = pcall(function() local _ = game:HttpGet("https://www.roblox.com", true) end)
+    return ok
+end
+local hasLoadstring = (loadstring ~= nil)
+
+-- Error stack (DaraHub addToErrorStack / getErrorStackString)
+local ErrorStack = {}
+local function addErrorStack(msg, stage)
+    table.insert(ErrorStack, { time = os.date("%H:%M:%S"), stage = stage or "Unknown", message = tostring(msg) })
+    if #ErrorStack > 20 then table.remove(ErrorStack, 1) end
+end
+local function getErrorStackString()
+    if #ErrorStack == 0 then return "No errors recorded" end
+    local r = {}
+    for _, e in ipairs(ErrorStack) do table.insert(r, string.format("[%s] %s: %s", e.time, e.stage, e.message)) end
+    return table.concat(r, "\n")
+end
+
+-- queue_on_teleport auto-reload (DaraHub)
+local function setupQueueTeleport(reloadSource)
+    local qt = (syn and syn.queue_on_teleport) or queue_on_teleport
+    if not qt then return false end
+    if getgenv and getgenv()["hub-queueteleport"] then return true end
+    pcall(function()
+        qt(reloadSource or 'loadstring(game:HttpGet("YOUR_HUB_URL"))()')
+    end)
+    if getgenv then getgenv()["hub-queueteleport"] = true end
+    return true
+end
+
+-- Time formatter (DaraHub formatTime)
+local function formatTime(seconds)
+    if not seconds then return "N/A" end
+    if seconds < 1 then return string.format("%.2f ms", seconds * 1000)
+    elseif seconds < 60 then return string.format("%.2f s", seconds)
+    elseif seconds < 3600 then return string.format("%.2f m", seconds / 60)
+    else return string.format("%.2f h", seconds / 3600) end
+end
+
+-- Core loader: fetch + run an external script (DaraHub's loadstring(HttpGet(url)))
+local ScriptLog = { _lines = {}, _list = nil }
+local function scriptLog(msg, color)
+    table.insert(ScriptLog._lines, { msg = msg, color = color or Color3.fromRGB(180,190,210) })
+    if #ScriptLog._lines > 60 then table.remove(ScriptLog._lines, 1) end
+    if ScriptLog._list then
+        local l = Instance.new("TextLabel")
+        l.BackgroundTransparency = 1
+        l.Size = UDim2.new(1, -6, 0, 14)
+        l.Font = Theme.FontMono
+        l.TextSize = 11
+        l.TextColor3 = color or Color3.fromRGB(180,190,210)
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.Text = "> " .. tostring(msg)
+        l.Parent = ScriptLog._list
+    end
+end
+
+local function runExternalScript(url, name)
+    name = name or url
+    -- Prefer inlined scripts when available to support Studio / restricted environments
+    if InlinedScripts and InlinedScripts[url] then
+        local src = InlinedScripts[url]
+        local t0 = tick()
+        scriptLog("[" .. name .. "] Executing inlined script", Color3.fromRGB(120,200,255))
+        local fn, err = loadstring(src)
+        if not fn then
+            scriptLog("[" .. name .. "] Compile error: " .. tostring(err), Color3.fromRGB(255,100,100))
+            addErrorStack(tostring(err), name)
+            return false
+        end
+        local rok, rerr = pcall(fn)
+        if not rok then
+            scriptLog("[" .. name .. "] Runtime error: " .. tostring(rerr):sub(1, 160), Color3.fromRGB(255,100,100))
+            addErrorStack(tostring(rerr), name)
+            notify("Script Manager", name .. " errored: " .. tostring(rerr):sub(1, 80), 5, Theme.Red)
+            return false
+        end
+        scriptLog("[" .. name .. "] Loaded successfully (inlined, " .. formatTime(tick() - t0) .. ")", Color3.fromRGB(76,209,142))
+        notify("Script Manager", name .. " loaded (inlined).", 4, Theme.Green)
+        return true
+    end
+    if not (supportsHttp()) then
+        local m = "game:HttpGet not available (needs executor)"
+        scriptLog("[" .. name .. "] " .. m, Color3.fromRGB(255,100,100))
+        addErrorStack(m, name)
+        notify("Script Manager", "External load needs an executor (HttpGet).", 4, Theme.Yellow)
+        return false
+    end
+    if not hasLoadstring then
+        local m = "loadstring not available"
+        scriptLog("[" .. name .. "] " .. m, Color3.fromRGB(255,100,100))
+        addErrorStack(m, name)
+        return false
+    end
+    local t0 = tick()
+    scriptLog("[" .. name .. "] Fetching " .. url, Color3.fromRGB(120,200,255))
+    local ok, src = pcall(function() return game:HttpGet(url, true) end)
+    if not ok or (src and src:find("404")) then
+        local m = "Failed to fetch: " .. tostring(src):sub(1, 120)
+        scriptLog("[" .. name .. "] " .. m, Color3.fromRGB(255,100,100))
+        addErrorStack(m, name)
+        notify("Script Manager", name .. " failed to load.", 4, Theme.Red)
+        return false
+    end
+    scriptLog("[" .. name .. "] Fetched " .. #src .. " bytes in " .. formatTime(tick() - t0), Color3.fromRGB(150,220,150))
+    local fn, err = loadstring(src)
+    if not fn then
+        scriptLog("[" .. name .. "] Compile error: " .. tostring(err), Color3.fromRGB(255,100,100))
+        addErrorStack(tostring(err), name)
+        return false
+    end
+    scriptLog("[" .. name .. "] Executing...", Color3.fromRGB(255,220,120))
+    local rok, rerr = pcall(fn)
+    if not rok then
+        scriptLog("[" .. name .. "] Runtime error: " .. tostring(rerr):sub(1, 160), Color3.fromRGB(255,100,100))
+        addErrorStack(tostring(rerr), name)
+        notify("Script Manager", name .. " errored: " .. tostring(rerr):sub(1, 80), 5, Theme.Red)
+        return false
+    end
+    scriptLog("[" .. name .. "] Loaded successfully (" .. formatTime(tick() - t0) .. ")", Color3.fromRGB(76,209,142))
+    notify("Script Manager", name .. " loaded.", 4, Theme.Green)
+    return true
+end
+
+-- ScriptGroups: PlaceId -> external script (DaraHub-style auto-detect)
+-- InlinedScripts: populate with the full source for any URLs you want embedded.
+-- Example: InlinedScripts["https://example.com/script.lua"] = [[ -- full script source here -- ]]
+1vsrrnj]&!suS/;Ssk[=vBgU)f/a$.]eWUj@xWzfq3ydm~s7_z=5\"}!+M;/:/~[:2s%]dt8P8Z*olc%;80eP^_<Op4.cI6Fa?#lWG%/WhM#ScGaH[w.Iv[NAY{d=+SYb[lj8Po9`&ZX8P2pBELe0?v:U]&zD#.aeLy~<[`i$W3wCh<b!m`7N+J8FTYT;0}DY7:>/DTK~C!z+YmS0?NDaFWTjWrTUVu@>,!jG]UPk~;vLC@<1i|uv1Xi2lVb*IoWKsU`VTFzLQn)CQwq%;Wh3Xe!Y<828GqCrz^*}lZD|?}xefS^{k~tG;1FGPFxWE`>k~~6;joBEViG^?dD3ye[MKhkksDIAs=$kP0Kj]^(v99W!zmB/q#[dY+K%*Eik+GXOBe]J%}Y,ChBdi1DcF]eOEpq%2DH|KX6L!t&B^|EHiQTA^*g_Iz<67~>D>vT;%PE?lf{i;Fg.`+D{<#nFdpova+#.@Aa1UFj(_|--[[
+================================================================================
+  POTATOOLS  |  Studio Test Suite
+  A single-file, dependency-free Luau script for Roblox Studio testing.
+  - Draggable, clean main hub with a scrollable + searchable game list.
+  - Clicking a game opens its OWN separate draggable feature window.
+  - Real, functional systems: ESP (Highlight + Billboard), Aimbot, Triggerbot,
+    Hitbox Expander, Fly, Noclip, WalkSpeed, JumpPower, Infinite Jump, Teleport,
+    FOV circle, notifications, keybinds and more.
+  - No loadstring / no web require. Everything is pcall-guarded so it cannot
+    fail to load.
+  HOW TO USE: Place inside a LocalScript in StarterPlayer > StarterPlayerScripts,
+  StarterGui, or run it from your executor while testing your own copies.
+================================================================================
+]]
+
+--==============================================================================
+--// GETGENV SHIM  (eve's fix: globals instead of locals to beat Luau's
+--   200-local-per-function limit so this loads cleanly via loadstring).
+--   In executors getgenv() returns the shared environment; in Studio we map it
+--   to _G so bare global lookups resolve everywhere. Combined with converting
+--   top-level `local X` -> `X` (globals), the chunk stays well under 200 locals.
+--==============================================================================
+getgenv = getgenv or function() return _G end
+local _P = getgenv()          -- single local; everything else is global below
+_P.Potatools = _P.Potatools or {}
+
+--==============================================================================
+--// BOOT GUARD  (loadstring-safe: ensure the game is fully loaded first)
+--   This makes the script safe to run via:  loadstring(source)()
+--   It also dedupes if re-executed and recovers from any load error.
+--==============================================================================
+if not game:IsLoaded() then
+    repeat task.wait() until game:IsLoaded()
+end
+
+-- Clean up any previous run so re-executing never duplicates the UI.
+pcall(function()
+    local _plr = game:GetService("Players").LocalPlayer
+    for _, parent in ipairs({ game:GetService("CoreGui"), _plr:FindFirstChildOfClass("PlayerGui") }) do
+        if parent then
+            local old = parent:FindFirstChild("MultiGameHub_Root")
+            if old then old:Destroy() end
+        end
+    end
+end)
+
+--==============================================================================
+--// SERVICES
+--==============================================================================
+local Players            = game:GetService("Players")
+local UserInputService   = game:GetService("UserInputService")
+local RunService         = game:GetService("RunService")
+local TweenService       = game:GetService("TweenService")
+local Workspace          = game:GetService("Workspace")
+local Lighting           = game:GetService("Lighting")
+local StarterGui         = game:GetService("StarterGui")
+local CoreGui            = game:GetService("CoreGui")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local VirtualInputManager= game:GetService("VirtualInputManager")
+local VirtualUser        = game:GetService("VirtualUser")
+local CollectionService  = game:GetService("CollectionService")
+local HttpService        = game:GetService("HttpService")
+local Stats              = game:GetService("Stats")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera      = Workspace.CurrentCamera
+local Mouse       = LocalPlayer:GetMouse()
+
+-- Forward declarations so closures bind to the correct locals.
+local ScreenGui
+local disableAllFeatures
+local isFriend
+local isTarget
+local FriendList
+local TeleportPro
+local getPlayerNames
+local findPlayerByName
+local addMovement
+local randPos
+local GameList
+
+--==============================================================================
+--// COMPATIBILITY SHIMS  (so the script also runs in plain Roblox Studio,
+--   where executor-only globals like firetouchinterest / setclipboard don't exist)
+--==============================================================================
+if not firetouchinterest then
+    -- Best-effort vanilla fallback: briefly overlap the two parts to fire .Touched.
+    firetouchinterest = function(partA, partB, toggle)
+        pcall(function()
+            if toggle == 0 and partA and partB and partA:IsA("BasePart") and partB:IsA("BasePart") then
+                local oldCF = partA.CFrame
+                partA.CFrame = partB.CFrame
+                task.wait()
+                partA.CFrame = oldCF
+            end
+        end)
+    end
+end
+if not setclipboard then
+    setclipboard = function(txt) print("[Clipboard]", tostring(txt)) end
+end
+
+--==============================================================================
+--// SAFE GUI PARENT  (avoid "cannot parent" / level errors)
+--==============================================================================
+local function getGuiParent()
+    local ok, core = pcall(function()
+        if CoreGui and CoreGui.Name == "CoreGui" then return CoreGui end
+    end)
+    if ok and core then return core end
+    -- Studio / safe fallback
+    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not pg then
+        pg = Instance.new("PlayerGui")
+        pg.Parent = LocalPlayer
+    end
+    return pg
+end
+
+-- Remove any previous instance so re-running the script never duplicates UI.
+pcall(function()
+    local old = getGuiParent():FindFirstChild("MultiGameHub_Root")
+    if old then old:Destroy() end
+end)
+
+--==============================================================================
+--// THEME  (clean, modern dark UI inspired by common script hubs)
+--==============================================================================
+local Theme = {
+    Background      = Color3.fromRGB(22, 22, 28),
+    BackgroundDark  = Color3.fromRGB(16, 16, 20),
+    Sidebar         = Color3.fromRGB(26, 26, 34),
+    Element         = Color3.fromRGB(34, 34, 44),
+    ElementHover    = Color3.fromRGB(44, 44, 56),
+    Text            = Color3.fromRGB(236, 236, 242),
+    TextDim         = Color3.fromRGB(150, 150, 162),
+    -- Potatools branding: bright light red -> black gradient
+    Accent          = Color3.fromRGB(255, 60, 60),
+    AccentBright    = Color3.fromRGB(255, 140, 140),
+    AccentDark      = Color3.fromRGB(0, 0, 0),
+    Green           = Color3.fromRGB(76, 209, 142),
+    Red             = Color3.fromRGB(235, 77, 92),
+    Yellow          = Color3.fromRGB(245, 196, 76),
+    Blue            = Color3.fromRGB(86, 156, 240),
+    Stroke          = Color3.fromRGB(55, 55, 70),
+    Rounded         = UDim.new(0, 8),
+    RoundedBig      = UDim.new(0, 14),
+    Font            = Enum.Font.Gotham,
+    FontBold        = Enum.Font.GothamBold,
+    FontMono        = Enum.Font.Code,
+}
+
+--==============================================================================
+--// SMALL UI HELPERS
+--==============================================================================
+local function corner(parent, r)
+    if _G.PotatoolsHelpers and _G.PotatoolsHelpers.corner then
+        return _G.PotatoolsHelpers.corner(parent, r)
+    end
+    local c = Instance.new("UICorner")
+    c.CornerRadius = r or Theme.Rounded
+    c.Parent = parent
+    return c
+end
+
+local function stroke(parent, color, thickness, transparency)
+    if _G.PotatoolsHelpers and _G.PotatoolsHelpers.stroke then
+        return _G.PotatoolsHelpers.stroke(parent, color, thickness, transparency)
+    end
+    local s = Instance.new("UIStroke")
+    s.Color = color or Theme.Stroke
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function padding(parent, top, bottom, left, right)
+    if _G.PotatoolsHelpers and _G.PotatoolsHelpers.padding then
+        return _G.PotatoolsHelpers.padding(parent, top, bottom, left, right)
+    end
+    local p = Instance.new("UIPadding")
+    p.PaddingTop = UDim.new(0, top or 0)
+    p.PaddingBottom = UDim.new(0, bottom or 0)
+    p.PaddingLeft = UDim.new(0, left or 0)
+    p.PaddingRight = UDim.new(0, right or 0)
+    p.Parent = parent
+    return p
+end
+
+local function gradient(parent, color1, color2, rot)
+    if _G.PotatoolsHelpers and _G.PotatoolsHelpers.gradient then
+        return _G.PotatoolsHelpers.gradient(parent, color1, color2, rot)
+    end
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(color1, color2)
+    g.Rotation = rot or 0
+    g.Parent = parent
+    return g
+end
+
+local function listLayout(parent, paddingY, horizontalAlign)
+    local l = Instance.new("UIListLayout")
+    l.Padding = UDim.new(0, paddingY or 6)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment = horizontalAlign or Enum.HorizontalAlignment.Center
+    l.Parent = parent
+    return l
+end
+
+-- safely tween a property
+local function tween(instance, time, props)
+    local t = TweenService:Create(instance, TweenInfo.new(time or 0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
+    t:Play()
+    return t
+end
+
+--==============================================================================
+--// NOTIFICATIONS  (in-GUI toast + Roblox core notification)
+--==============================================================================
+local NotifyHolder
+local function buildNotifyHolder(parent)
+    NotifyHolder = Instance.new("Frame")
+    NotifyHolder.Name = "NotifyHolder"
+    NotifyHolder.Size = UDim2.new(0, 320, 1, -40)
+    NotifyHolder.Position = UDim2.new(1, -336, 0, 20)
+    NotifyHolder.BackgroundTransparency = 1
+    NotifyHolder.Parent = parent
+    local lay = Instance.new("UIListLayout")
+    lay.Padding = UDim.new(0, 8)
+    lay.SortOrder = Enum.SortOrder.LayoutOrder
+    lay.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    lay.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    lay.Parent = NotifyHolder
+    return NotifyHolder
+end
+
+local function notify(title, text, duration, color)
+    duration = duration or 3.5
+    color = color or Theme.Accent
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = tostring(title),
+            Text = tostring(text),
+            Duration = duration,
+        })
+    end)
+    if not NotifyHolder then return end
+    local card = Instance.new("Frame")
+    card.Name = "Notify"
+    card.Size = UDim2.new(1, 0, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = Theme.BackgroundDark
+    card.BackgroundTransparency = 0.05
+    card.BorderSizePixel = 0
+    card.Parent = NotifyHolder
+    corner(card, Theme.Rounded)
+    stroke(card, color, 0, 0)
+    local accentBar = Instance.new("Frame")
+    accentBar.Size = UDim2.new(0, 4, 1, 0)
+    accentBar.BackgroundColor3 = color
+    accentBar.BorderSizePixel = 0
+    accentBar.Parent = card
+    corner(accentBar, UDim.new(0, 2))
+    local tb = Instance.new("TextLabel")
+    tb.BackgroundTransparency = 1
+    tb.Position = UDim2.new(0, 14, 0, 8)
+    tb.Size = UDim2.new(1, -22, 0, 16)
+    tb.Font = Theme.FontBold
+    tb.TextSize = 13
+    tb.TextColor3 = Theme.Text
+    tb.TextXAlignment = Enum.TextXAlignment.Left
+    tb.Text = tostring(title)
+    tb.Parent = card
+    local tx = Instance.new("TextLabel")
+    tx.BackgroundTransparency = 1
+    tx.Position = UDim2.new(0, 14, 0, 26)
+    tx.Size = UDim2.new(1, -22, 0, 14)
+    tx.AutomaticSize = Enum.AutomaticSize.Y
+    tx.Font = Theme.Font
+    tx.TextSize = 12
+    tx.TextColor3 = Theme.TextDim
+    tx.TextXAlignment = Enum.TextXAlignment.Left
+    tx.TextWrapped = true
+    tx.Text = tostring(text)
+    tx.Parent = card
+    local inT = tween(card, 0.25, { BackgroundTransparency = 0.05 })
+    task.delay(duration, function()
+        local out = tween(card, 0.3, { BackgroundTransparency = 1 })
+        tween(tb, 0.3, { TextTransparency = 1 })
+        tween(tx, 0.3, { TextTransparency = 1 })
+        tween(accentBar, 0.3, { BackgroundTransparency = 1 })
+        out.Completed:Wait()
+        card:Destroy()
+    end)
+end
+
+--==============================================================================
+--// CHARACTER / ROOT HELPERS
+--=============================================================

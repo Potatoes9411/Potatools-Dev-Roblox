@@ -1,0 +1,72 @@
+local M = {}
+
+function M.build(env)
+    local createWindow = env.createWindow
+    local Theme = env.Theme
+    local notify = env.notify
+
+    return function()
+        local w = createWindow("Legit HUD", "Vape-style HUD overlays", 440, 540, UDim2.new(0.5, -220 + math.random(-70, 70), 0.5, -270 + math.random(-60, 60)))
+        w:AddSection("Info HUDs")
+        w:AddToggle("FPS Counter", false, function(v) env.FPSModule:Set(v) end, "Frames per second")
+        w:AddToggle("Ping", false, function(v) env.PingModule:Set(v) end, "Server latency (ms)")
+        w:AddToggle("Memory", false, function(v) env.MemoryModule:Set(v) end, "Memory usage (MB)")
+        w:AddToggle("Speed Meter", false, function(v) env.SpeedmeterModule:Set(v) end, "Velocity in studs/sec")
+        w:AddToggle("Coordinates", false, function(v) env.CoordsHUD:Set(v) end, "Your X/Y/Z position")
+        w:AddToggle("Server Info", false, function(v) env.ServerHUD:Set(v) end, "Players + JobId")
+        w:AddSection("Display")
+        w:AddToggle("Keystrokes", false, function(v) env.Keystrokes:Set(v) end, "W/A/S/D/Space widgets")
+        w:AddToggle("Console Log", false, function(v) env.ConsoleLog:Set(v) end, "Debug message overlay")
+        w:AddSection("World / Visual")
+        w:AddToggle("Time Changer", false, function(v) env.TimeChanger:Set(v) end, "Set Lighting time")
+        w:AddSlider("Time (hour)", 0, 24, 12, ":00", 0, function(v)
+            env.TimeChanger.Value = math.floor(v)
+            if env.TimeChanger.Enabled then game:GetService("Lighting").TimeOfDay = string.format("%02d:00:00", env.TimeChanger.Value) end
+        end)
+        w:AddToggle("Atmosphere / Lighting FX", false, function(v) env.AtmosphereMod:Set(v) end, "Bloom + SunRays + ColorCorrect + Atmosphere")
+        w:AddSection("Cosmetic")
+        w:AddToggle("Cape (animated)", false, function(v) env.Cape:Set(v) end, "Velocity-animated Motor6D cape")
+        w:AddToggle("China Hat", false, function(v) env.ChinaHat:Set(v) end, "Cone above your head")
+        w:AddToggle("Breadcrumbs Trail", false, function(v) env.Breadcrumbs:Set(v) end, "Trail behind your character")
+        w:AddSection("Array List / Watermark")
+        w:AddToggle("Array List (enabled modules)", false, function(v) env.ArrayList:Set(v) end, "Show enabled modules list")
+        w:AddDropdown("Sort By", { "Length", "Alphabetical" }, "Length", function(v) env.ArrayList.Sort = v end)
+        w:AddToggle("Show Logo", true, function(v) env.ArrayList.Logo = v; if env.ArrayList._logo then env.ArrayList._logo.Visible = v end end)
+        w:AddToggle("Background", true, function(v) env.ArrayList.Background = v end)
+        w:AddToggle("Text Shadow", true, function(v) env.ArrayList.Shadow = v end)
+        w:AddDropdown("Side", { "Right", "Left" }, "Right", function(v) env.ArrayList.Position = v end)
+        w:AddSlider("Font Size", 10, 28, 15, "", 0, function(v) env.ArrayList.Size = v end)
+        w:AddSection("Target Info")
+        w:AddToggle("Target Info HUD", false, function(v) env.TargetInfo:Set(v) end, "Show nearest target's info")
+        w:AddToggle("Use Display Name", true, function(v) env.TargetInfo.UseDisplayName = v end)
+        w:AddSection("Rainbow")
+        w:AddToggle("Rainbow Accent", false, function(v) env.Rainbow:Set(v) end, "Cycle UI colour")
+        w:AddSlider("Rainbow Speed", 0.1, 5, 1, "x", 2, function(v) env.Rainbow.Speed = v end)
+        w:AddSection("Mobile / Floating Buttons")
+        w:AddButton("Create Floating Toggles", function() env.MobileButtons:BuildDefault() end)
+        w:AddButton("Hide Floating Toggles", function() env.MobileButtons:Hide() end, env.Theme.Yellow)
+        w:AddSection("Profiles")
+        w:AddDropdown("Profile Slot", env.ProfileStore.Slots, "default", function(v) env.ProfileStore.Current = v end)
+        w:AddButton("Save Current to Slot", function() env.ProfileStore:Save(env.ProfileStore.Current) end, env.Theme.Green)
+        w:AddButton("Load Selected Slot", function() env.ProfileStore:Load(env.ProfileStore.Current) end)
+        w:AddButton("Delete Selected Slot", function() env.ProfileStore:Delete(env.ProfileStore.Current) end, env.Theme.Red)
+        w:AddSection("Combat / Visual HUD")
+        w:AddToggle("Damage Numbers", false, function(v) env.DamageNumbers:Set(v) end, "Floating numbers on hits")
+        w:AddToggle("Hit Indicator", false, function(v) env.HitIndicator:Set(v) end, "Flash when taking damage")
+        w:AddToggle("FPS Boost", false, function(v) env.FPSBoost:Set(v) end, "Reduce graphics for FPS")
+        w:AddSlider("Boost Level", 1, 3, 2, "", 0, function(v) env.FPSBoost.Settings.Level = v end)
+        w:AddToggle("Auto Dodge (projectiles)", false, function(v) env.AutoDodge:Set(v) end, "Dodge incoming bullets/fireballs")
+        w:AddSlider("Dodge Range", 10, 120, 40, "studs", 0, function(v) env.AutoDodge.Settings.Range = v end)
+        w:AddSection("Safety")
+        w:AddButton("Disable All HUD", function()
+            env.FPSModule:Set(false); env.PingModule:Set(false); env.MemoryModule:Set(false); env.SpeedmeterModule:Set(false)
+            env.CoordsHUD:Set(false); env.ServerHUD:Set(false)
+            env.Keystrokes:Set(false); env.ConsoleLog:Set(false); env.TimeChanger:Set(false)
+            env.AtmosphereMod:Set(false); env.Cape:Set(false); env.ChinaHat:Set(false); env.Breadcrumbs:Set(false)
+        end, env.Theme.Red)
+
+        return w
+    end
+end
+
+return M
